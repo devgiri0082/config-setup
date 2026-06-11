@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+
+# Exit on error
+set -e
+
+# Usage message
+usage() {
+    echo "Usage: $(basename "$0") <folder_name>"
+    exit 1
+}
+
+# Check if folder name is provided
+if [ -z "$1" ]; then
+    usage
+fi
+
+# Resolve absolute path of the target directory
+if [ -d "$1" ]; then
+    TARGET_DIR=$(cd "$1" && pwd)
+elif command -v zoxide >/dev/null 2>&1 && Z_DIR=$(zoxide query "$1" 2>/dev/null); then
+    TARGET_DIR="$Z_DIR"
+else
+    echo "Error: Directory '$1' does not exist and could not be resolved by zoxide."
+    exit 1
+fi
+
+# Generate session name from the folder's base name, replacing invalid characters
+SESSION_NAME=$(basename "$TARGET_DIR" | tr ' .:' '___')
+
+# Check if session already exists
+if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+    echo "Session '$SESSION_NAME' already exists. Attaching..."
+    if [ -n "$TMUX" ]; then
+        tmux switch-client -t "$SESSION_NAME"
+    else
+        tmux attach-session -t "$SESSION_NAME"
+    fi
+    exit 0
+fi
+
+# Create a new detached session with the first window named "editor" (1 pane)
+tmux new-session -d -s "$SESSION_NAME" -n "editor" -c "$TARGET_DIR"
+
+# Create the second window named "dev"
+tmux new-window -t "$SESSION_NAME" -n "dev" -c "$TARGET_DIR"
+
+# Split the second window into 4 panes in a 2x2 grid (tiled layout)
+# First split horizontally: create left and right halves
+tmux split-window -h -t "$SESSION_NAME:dev" -c "$TARGET_DIR"
+# Split the left pane vertically: create top-left and bottom-left
+tmux split-window -v -t "$SESSION_NAME:dev.left" -c "$TARGET_DIR"
+# Split the right pane vertically: create top-right and bottom-right
+tmux split-window -v -t "$SESSION_NAME:dev.right" -c "$TARGET_DIR"
+
+# Select tiled layout to balance them evenly
+tmux select-layout -t "$SESSION_NAME:dev" tiled
+
+# --- Load configuration and execute commands ---
+GLOBAL_CONFIG_DIR="$HOME/.config/fast_open"
+GLOBAL_CONFIG="$GLOBAL_CONFIG_DIR/config.json"
+LOCAL_CONFIG="$TARGET_DIR/.fast_open.json"
+
+# Ensure global config directory and file exist silently without error
+if [ ! -f "$GLOBAL_CONFIG" ]; then
+    mkdir -p "$GLOBAL_CONFIG_DIR" 2>/dev/null || true
+    cat <<EOF > "$GLOBAL_CONFIG" 2>/dev/null || true
+{
+  "w1_pane1": "",
+  "w2_pane1": "",
+  "w2_pane2": "",
+  "w2_pane3": "",
+  "w2_pane4": "",
+  "_info": "Specify commands to run on startup. Example: 'w1_pane1': 'nvim .', 'w2_pane1': 'agy'"
+}
+EOF
+fi
+
+# Default values
+CFG_w1_pane1=""
+CFG_w2_pane1=""
+CFG_w2_pane2=""
+CFG_w2_pane3=""
+CFG_w2_pane4=""
+
+# Only parse configuration files that actually exist to avoid errors
+config_files=()
+if [ -f "$GLOBAL_CONFIG" ]; then
+    config_files+=("$GLOBAL_CONFIG")
+fi
+if [ -f "$LOCAL_CONFIG" ]; then
+    config_files+=("$LOCAL_CONFIG")
+fi
+
+parsed_vars=""
+if [ ${#config_files[@]} -gt 0 ]; then
+    if command -v jq >/dev/null 2>&1; then
+        parsed_vars=$(jq -r -s '
+            reduce .[] as $item ({}; . * $item) |
+            to_entries[] |
+            select(.key | startswith("w")) |
+            "CFG_\(.key)=\( .value | @sh )"
+        ' "${config_files[@]}" 2>/dev/null || true)
+    else
+        python_paths=$(printf "'%s', " "${config_files[@]}")
+        parsed_vars=$(python3 -c "
+import json, os, shlex
+config = {}
+for path in [${python_paths}]:
+    if os.path.exists(path):
+        try:
+            with open(path) as f:
+                config.update(json.load(f))
+        except Exception:
+            pass
+for k, v in config.items():
+    if k.startswith('w'):
+        print(f'CFG_{k}={shlex.quote(str(v))}')
+" 2>/dev/null || true)
+    fi
+fi
+
+if [ -n "$parsed_vars" ]; then
+    eval "$parsed_vars"
+fi
+
+# Resolve pane IDs dynamically to support any base-index setting (0 or 1)
+EDITOR_PANE_ID=$(tmux list-panes -t "$SESSION_NAME:editor" -F '#{pane_id}' | head -n 1)
+DEV_PANE_IDS=($(tmux list-panes -t "$SESSION_NAME:dev" -F '#{pane_id}'))
+
+# Run commands if configured
+if [ -n "$CFG_w1_pane1" ]; then
+    tmux send-keys -t "$EDITOR_PANE_ID" "$CFG_w1_pane1" C-m
+fi
+if [ -n "$CFG_w2_pane1" -a ${#DEV_PANE_IDS[@]} -gt 0 ]; then
+    tmux send-keys -t "${DEV_PANE_IDS[0]}" "$CFG_w2_pane1" C-m
+fi
+if [ -n "$CFG_w2_pane2" -a ${#DEV_PANE_IDS[@]} -gt 1 ]; then
+    tmux send-keys -t "${DEV_PANE_IDS[1]}" "$CFG_w2_pane2" C-m
+fi
+if [ -n "$CFG_w2_pane3" -a ${#DEV_PANE_IDS[@]} -gt 2 ]; then
+    tmux send-keys -t "${DEV_PANE_IDS[2]}" "$CFG_w2_pane3" C-m
+fi
+if [ -n "$CFG_w2_pane4" -a ${#DEV_PANE_IDS[@]} -gt 3 ]; then
+    tmux send-keys -t "${DEV_PANE_IDS[3]}" "$CFG_w2_pane4" C-m
+fi
+
+# Ensure the first window is focused
+tmux select-window -t "$SESSION_NAME:editor"
+
+# Attach to the session (or switch client if already inside tmux)
+if [ -n "$TMUX" ]; then
+    tmux switch-client -t "$SESSION_NAME"
+else
+    tmux attach-session -t "$SESSION_NAME"
+fi
