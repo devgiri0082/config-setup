@@ -6,10 +6,10 @@ local app_icons = require("helpers.app_icons")
 local spaces = {}
 
 local space_names = {
-  [1] = "code",
-  [2] = "chat",
-  [3] = "misc",
-  [4] = "fun",
+  [1] = "1",
+  [2] = "2",
+  [3] = "3",
+  [4] = "4",
   [5] = "5",
   [6] = "6",
   [7] = "7",

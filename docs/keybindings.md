@@ -119,7 +119,7 @@ All use left Option (`lalt`) as modifier.
 | `⇧lalt + p/n` | Move window to prev/next space |
 | `⇧lalt + s` | Toggle split orientation |
 | `⇧lalt + x/y` | Mirror space on axis |
-| `⇧lalt + f` | Toggle fullscreen zoom |
+| `⇧lalt + f` | Toggle space-wide fullscreen mode (stack layout, all windows fill space) |
 
 ### Stacks
 
@@ -127,6 +127,8 @@ All use left Option (`lalt`) as modifier.
 |----------|--------|
 | `⇧⌃ + hjkl` | Stack window in direction |
 | `⇧⌃ + n/p` | Next/prev in stack |
+
+In space-wide fullscreen mode (`⇧lalt + f`), all windows in the space share one frame and behave like a stack — use `⇧⌃ + n/p` to cycle between them.
 
 ### Resize
 

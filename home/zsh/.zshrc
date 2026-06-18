@@ -93,3 +93,6 @@ export XDG_CONFIG_HOME="$HOME/.config"
 # fast_open alias
 alias fo="$HOME/.config/fast_open/fast_open"
 export PATH="$PATH:$(go env GOPATH)/bin"
+
+# opencode
+export PATH=/Users/dev/.opencode/bin:$PATH

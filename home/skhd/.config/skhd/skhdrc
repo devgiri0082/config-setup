@@ -18,8 +18,8 @@ lalt - 0x27 : yabai -m window --focus  last
 # Float / Unfloat window: lalt - space
 lalt - space : yabai -m window --toggle float
 
-# Make window zoom to fullscreen: shift + lalt - f
-shift + lalt - f : yabai -m window --toggle zoom-fullscreen
+# Toggle space-wide fullscreen mode (stack layout, all windows fill space): shift + lalt - f
+shift + lalt - f : yabai -m space --layout $(yabai -m query --spaces --space | jq -r '.type' | grep -q stack && echo bsp || echo stack)
 
 # Make window zoom to parent node: lalt - f 
 lalt - f : yabai -m window --toggle zoom-parent
